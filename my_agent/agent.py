@@ -37,37 +37,37 @@ def _run_async(coro):
         t.join()
         return result_container.get("value")
 
-def get_container_details(container_no: str) -> str:
-    """
-    Fetch container availability/info by container number using Ports America API.
+# def get_container_details(container_no: str) -> str:
+#     """
+#     Fetch container availability/info by container number using Ports America API.
 
-    Args:
-        container_no: Container number, e.g. "MSBU7060010"
-    """
-    container = (container_no or "").strip().upper()
-    if not container:
-        return "Please provide a valid container number."
+#     Args:
+#         container_no: Container number, e.g. "MSBU7060010"
+#     """
+#     container = (container_no or "").strip().upper()
+#     if not container:
+#         return "Please provide a valid container number."
 
-    headers = {
-        "Accept": "*/*",
-        "Origin": "https://pnct.net",
-        "Referer": "https://pnct.net/",
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
-    }
-    params = {
-        "siteId": "PNCT_NJ",
-        "key": container,
-        "_": str(int(time.time() * 1000)),
-    }
-    try:
-        resp = requests.get(BUSINQUIRY_URL, headers=headers, params=params, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-        return json.dumps(data, indent=2) if data is not None else "Empty response from API."
-    except requests.HTTPError as e:
-        return f"PortsAmerica HTTP error: {e.response.status_code} {e.response.reason}"
-    except Exception as e:
-        return f"PortsAmerica request failed: {str(e)}"
+#     headers = {
+#         "Accept": "*/*",
+#         "Origin": "https://pnct.net",
+#         "Referer": "https://pnct.net/",
+#         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+#     }
+#     params = {
+#         "siteId": "PNCT_NJ",
+#         "key": container,
+#         "_": str(int(time.time() * 1000)),
+#     }
+#     try:
+#         resp = requests.get(BUSINQUIRY_URL, headers=headers, params=params, timeout=30)
+#         resp.raise_for_status()
+#         data = resp.json()
+#         return json.dumps(data, indent=2) if data is not None else "Empty response from API."
+#     except requests.HTTPError as e:
+#         return f"PortsAmerica HTTP error: {e.response.status_code} {e.response.reason}"
+#     except Exception as e:
+#         return f"PortsAmerica request failed: {str(e)}"
 
 def weather_for_city(city: str) -> str:
     """
@@ -122,7 +122,25 @@ def hello(name: str = "Temporal") -> dict:
     """
     return _run_async(_adk_server.hello(name))
 
+def get_container_details(container_no: str) -> dict:
+    """
+    Use server.py's MCP tool (get_container_details) to get container details.
+    """
+    return _run_async(_adk_server.get_container_details(container_no))
 
+def pnct_empty_return():
+    """
+    Use server.py's MCP tool (fetch_pnct_empty_return) to fetch the PNCT EmptyReturn page.
+    Provide the raw Cookie header string copied from your browser session.
+    """
+    try:
+        result = _run_async(_adk_server.fetch_pnct_empty_return())
+        if isinstance(result, dict) and result.get("error"):
+            return f"PNCT error: {result.get('error')}"
+        html = result.get("html")
+        return html if html is not None else ""
+    except Exception as e:
+        return f"PNCT request failed: {str(e)}"
 root_agent = Agent(
     model='gemini-2.5-flash',
     name='root_agent',
@@ -150,12 +168,97 @@ root_agent = Agent(
           - "Hello Temporal" → say hello to Temporal
           - "Hello John Doe" → say hello to John Doe
           - "Hlo World" → say hello to World
-          - "Hi" → say hello to Temporal
+          - "Hi" → say hello to Developer
+        
+        - Empty Return: You are a Track OS AI Agent specialized in port operations and container tracking.
+
+            You are given the full HTML content of the PNCT Empty Return page. Your task is to **extract structured data** from the HTML, specifically:
+
+            ---
+
+            ### Data to Extract
+
+            **Shipping Lines**: All shipping lines listed in the table.  
+            **Container Types and Status**: For each shipping line, extract the status (YES / NO / N/A) for each container type:
+
+            - 20' Dry
+            - 20' Open Tops
+            - 20' Flat
+            - 20' Reefers
+            - Hangers
+            - 40' Dry
+            - 40' Open Tops
+            - 40' Flat
+            - 40' High Cubes
+            - 40' High Cube Reefers
+            - 45' High Cubes
+
+            **Remarks**: If a “More/Less” section exists for a shipping line, extract the full remarks content for that line.
+
+             you then get data in a structured JSON format like this:
+
+            ```json
+            [
+            {
+                "shipping_line": "MSC",
+                "containers": {
+                "20' Dry": "YES",
+                "20' Open Tops": "YES",
+                "20' Flat": "YES",
+                "20' Reefers": "YES",
+                "Hangers": "YES",
+                "40' Dry": "YES",
+                "40' Open Tops": "YES",
+                "40' Flat": "YES",
+                "40' High Cubes": "YES",
+                "40' High Cube Reefers": "YES",
+                "45' High Cubes": "YES"
+                },
+                "remarks": "20DV Dispatch: PNCT/Marsh\n40DV Dispatch: PNCT/PORT LIBERTY\n..."
+            },
+            {
+                "shipping_line": "MAERSK SAFMARINE SEALAND HAMBURG SUD",
+                "containers": {
+                "20' Dry": "NO",
+                "20' Open Tops": "NO",
+                "20' Flat": "NO",
+                "20' Reefers": "NO",
+                "Hangers": "NO",
+                "40' Dry": "NO",
+                "40' Open Tops": "NO",
+                "40' Flat": "NO",
+                "40' High Cubes": "NO",
+                "40' High Cube Reefers": "NO",
+                "45' High Cubes": "NO"
+                },
+                "remarks": "All Specialized Equipment and 20' Reefers return to APM\nDispatch 20DV from PNCT/APM\n..."
+            }
+            ]
+
+            ### Task
+
+            1. When the user asks about **availability of containers**, reply in **natural language** describing which shipping lines are open (YES) or not (NO/N/A) for the requested container type.
+            2. When the user asks about a **specific shipping line**, list all container types that are available (YES) and include remarks if present.
+            3. Format your response clearly, using bullet points or short sentences for readability.
+            4. Include relevant remarks if they exist for the shipping line.
+            5. When the user provides a container number:
+                - Use the MCP tool get_container_details(container_no) to fetch container details.
+                - Then use the MCP tool pnct_empty_return to get empty return information for that container type.
+
+            
+            ### Important
+
+            - Always map YES/NO/N/A to user-friendly text (“available” / “not available” / “not applicable”).  
+            - Keep responses concise but informative.  
+            - Include shipping line remarks if available.  
+            - Include the date and time or gate hours when the empty return is available.
+            - Do not include HTML tags in the response.
     ''',
     tools=[
         get_container_details,
         weather_for_city,
         geocode_location_tool,
         hello,
+        pnct_empty_return,
     ],
 ) 
