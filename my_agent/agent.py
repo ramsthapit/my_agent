@@ -135,12 +135,11 @@ def pnct_empty_return():
     """
     try:
         result = _run_async(_adk_server.fetch_pnct_empty_return())
-        if isinstance(result, dict) and result.get("error"):
-            return f"PNCT error: {result.get('error')}"
-        html = result.get("html")
-        return html if html is not None else ""
+        return result
     except Exception as e:
         return f"PNCT request failed: {str(e)}"
+
+
 root_agent = Agent(
     model='gemini-2.5-flash',
     name='root_agent',
@@ -243,7 +242,7 @@ root_agent = Agent(
             4. Include relevant remarks if they exist for the shipping line.
             5. When the user provides a container number:
                 - Use the MCP tool get_container_details(container_no) to fetch container details.
-                - Then use the MCP tool pnct_empty_return to get empty return information for that container type.
+                - Then use the MCP tool pnct_empty_return to return shipping lines info for that container type.
 
             
             ### Important
